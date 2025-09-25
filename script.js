@@ -1,7 +1,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.138.3/build/three.module.js";
 
 // --- CONFIG ---
-const GRID_SIZE = 15;
+const GRID_SIZE = 14;
 const BOX_SIZE = 1;
 const HALF_GRID = GRID_SIZE / 2;
 const GAME_SPEED = 350; // Slower game speed
@@ -497,18 +497,73 @@ window.addEventListener(
   "touchstart",
   (event) => {
     event.preventDefault();
+    if (gameOver) return;
+
     const touchX = event.touches[0].clientX;
     const touchY = event.touches[0].clientY;
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
 
-    let turn;
+    const headPosWorld = gridToWorld(snake[0]).applyQuaternion(
+      gameContainer.quaternion,
+    );
+
+    let turnOptions = {};
+
     if (touchX < screenWidth / 2) {
-      turn = touchY < screenHeight / 2 ? "up" : "down";
+      // Left (Magenta) side for up/down turns
+      const upDirWorld = upVector
+        .clone()
+        .applyQuaternion(gameContainer.quaternion);
+      const downDirWorld = upVector
+        .clone()
+        .negate()
+        .applyQuaternion(gameContainer.quaternion);
+
+      const upTurnPosProjected = headPosWorld
+        .clone()
+        .add(upDirWorld)
+        .project(camera);
+      const downTurnPosProjected = headPosWorld
+        .clone()
+        .add(downDirWorld)
+        .project(camera);
+
+      turnOptions = {
+        upper: upTurnPosProjected.y > downTurnPosProjected.y ? "up" : "down",
+        lower: upTurnPosProjected.y < downTurnPosProjected.y ? "up" : "down",
+      };
     } else {
-      turn = touchY < screenHeight / 2 ? "right" : "left";
+      // Right (Yellow) side for left/right turns
+      const rightVector = direction.clone().cross(upVector);
+      const rightDirWorld = rightVector
+        .clone()
+        .applyQuaternion(gameContainer.quaternion);
+      const leftDirWorld = rightVector
+        .clone()
+        .negate()
+        .applyQuaternion(gameContainer.quaternion);
+
+      const rightTurnPosProjected = headPosWorld
+        .clone()
+        .add(rightDirWorld)
+        .project(camera);
+      const leftTurnPosProjected = headPosWorld
+        .clone()
+        .add(leftDirWorld)
+        .project(camera);
+
+      turnOptions = {
+        upper:
+          rightTurnPosProjected.y > leftTurnPosProjected.y ? "right" : "left",
+        lower:
+          rightTurnPosProjected.y < leftTurnPosProjected.y ? "right" : "left",
+      };
     }
-    handleTurn(turn);
+
+    const finalTurn =
+      touchY < screenHeight / 2 ? turnOptions.upper : turnOptions.lower;
+    handleTurn(finalTurn);
   },
   { passive: false },
 );
@@ -571,8 +626,9 @@ function animate() {
         const worldNormal = face.normal
           .clone()
           .applyQuaternion(gameContainer.quaternion);
-        const magentaFactor = Math.abs(worldNormal.dot(worldRight));
-        const yellowFactor = Math.abs(worldNormal.dot(worldUp));
+        // SWAPPED LOGIC: Magenta is for up/down turns (aligned with upVector), Yellow is for left/right (aligned with rightVector)
+        const magentaFactor = Math.abs(worldNormal.dot(worldUp));
+        const yellowFactor = Math.abs(worldNormal.dot(worldRight));
         const greyFactor = Math.abs(worldNormal.dot(worldForward));
 
         // If the face normal is most aligned with the forward/backward direction, make it a dull, transparent grey
