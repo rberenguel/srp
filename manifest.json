@@ -1,0 +1,22 @@
+{
+  "version": "0.1.0",
+  "name": "Srp",
+  "short_name": "Srp",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "description": "Like a famous game, but different, and in 3d.",
+  "icons": [
+    {
+      "src": "media/icon192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "media/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

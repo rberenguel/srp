@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <title>Srp</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" href="media/favicon.ico" type="image/x-icon" />
+  </head>
+  <body>
+    <div id="left-indicator" class="touch-indicator"></div>
+    <div id="right-indicator" class="touch-indicator"></div>
+
+    <div id="ui-container">
+      <h2>Score: <span id="score">0</span></h2>
+      <p class="controls-text"><strong>Controls:</strong></p>
+      <p class="controls-text">Arrow Keys: Turn</p>
+      <p class="controls-text">Touch: Tap quadrants to turn</p>
+    </div>
+
+    <div id="start-message">
+      <h1>Srp</h1>
+      <p>Press any arrow key or touch to start</p>
+    </div>
+
+    <div id="game-over">
+      <h1>Game Over</h1>
+      <h2>Final Score: <span id="final-score">0</span></h2>
+      <button id="restart-button">Restart</button>
+    </div>
+
+    <script type="module" src="script.js"></script>
+  </body>
+</html>
