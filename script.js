@@ -144,7 +144,14 @@ let visibleFaceNames = [];
 let snake, direction, nextDirection, fruit, fruitPart, bombs, bombParts;
 let upVector, nextUpVector;
 let snakeHeadMesh, snakeTubeMeshes, snakeShadows, snakeTailMesh;
-let score, gameOver, gamePaused, gameInterval, frameCount = 0;
+let score,
+  gameOver,
+  gamePaused,
+  gameInterval,
+  frameCount = 0;
+let particleSystems = [];
+let clock = new THREE.Clock();
+let delta;
 
 // --- COLORS FROM CSS ---
 const style = getComputedStyle(document.documentElement);
@@ -153,6 +160,44 @@ const magentaColor = new THREE.Color(
 );
 const yellowColor = new THREE.Color(style.getPropertyValue("--yellow").trim());
 const greyColor = new THREE.Color(style.getPropertyValue("--base01").trim()); // Dull grey
+
+function createExplosion(position, color) {
+  const particleCount = 200;
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+  const velocities = [];
+
+  for (let i = 0; i < particleCount; i++) {
+    positions[i * 3] = 0;
+    positions[i * 3 + 1] = 0;
+    positions[i * 3 + 2] = 0;
+    const velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 4,
+      (Math.random() - 0.5) * 4 + 2,
+      (Math.random() - 0.5) * 4,
+    );
+    velocities.push(velocity);
+  }
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+
+  const material = new THREE.PointsMaterial({
+    color: color,
+    size: 0.08,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+  });
+
+  const particles = new THREE.Points(geometry, material);
+  particles.position.copy(position);
+  gameContainer.add(particles); // Add to gameContainer instead of scene
+
+  particleSystems.push({
+    mesh: particles,
+    velocities: velocities,
+    lifetime: 1.5,
+  });
+}
 
 function createGamePart(pos, material, geometry) {
   const worldPos = gridToWorld(pos);
@@ -171,7 +216,7 @@ function createShadowsForPos(pos, material) {
   shadowMaterial.opacity = 0.3;
 
   // Only create shadows for faces that have grids
-  faces.forEach(face => {
+  faces.forEach((face) => {
     const shadowMesh = new THREE.Mesh(shadowGeometry, shadowMaterial);
     switch (face.name) {
       case "px":
@@ -335,7 +380,7 @@ function updateSnakeShadows() {
       // Update existing shadows
       const shadowGroup = snakeShadows[index];
       const worldPos = gridToWorld(segmentPos);
-      faces.forEach(face => {
+      faces.forEach((face) => {
         const shadowMesh = shadowGroup[face.name];
         if (shadowMesh) {
           switch (face.name) {
@@ -343,19 +388,31 @@ function updateSnakeShadows() {
               shadowMesh.position.set(HALF_GRID - 0.01, worldPos.y, worldPos.z);
               break;
             case "nx":
-              shadowMesh.position.set(-HALF_GRID + 0.01, worldPos.y, worldPos.z);
+              shadowMesh.position.set(
+                -HALF_GRID + 0.01,
+                worldPos.y,
+                worldPos.z,
+              );
               break;
             case "py":
               shadowMesh.position.set(worldPos.x, HALF_GRID - 0.01, worldPos.z);
               break;
             case "ny":
-              shadowMesh.position.set(worldPos.x, -HALF_GRID + 0.01, worldPos.z);
+              shadowMesh.position.set(
+                worldPos.x,
+                -HALF_GRID + 0.01,
+                worldPos.z,
+              );
               break;
             case "pz":
               shadowMesh.position.set(worldPos.x, worldPos.y, HALF_GRID - 0.01);
               break;
             case "nz":
-              shadowMesh.position.set(worldPos.x, worldPos.y, -HALF_GRID + 0.01);
+              shadowMesh.position.set(
+                worldPos.x,
+                worldPos.y,
+                -HALF_GRID + 0.01,
+              );
               break;
           }
         }
@@ -399,6 +456,14 @@ function init() {
   snakeShadows = [];
   fruit = null;
   fruitPart = null;
+
+  // Clear existing particle systems
+  particleSystems.forEach((system) => {
+    gameContainer.remove(system.mesh);
+    system.mesh.geometry.dispose();
+    system.mesh.material.dispose();
+  });
+  particleSystems = [];
 
   score = 0;
   gameOver = false;
@@ -445,6 +510,7 @@ function update() {
   if (head.equals(fruit)) {
     score++;
     scoreElement.textContent = score;
+    createExplosion(gridToWorld(fruit), fruitMaterial.color);
     spawnFruit();
     spawnBomb();
   } else {
@@ -713,6 +779,8 @@ window.addEventListener("resize", updateCameraForAspectRatio, false);
 
 function animate() {
   requestAnimationFrame(animate);
+  delta = clock.getDelta();
+
   if (!gameOver) {
     gameContainer.rotation.y += 0.0005;
     gameContainer.rotation.x += 0.0002;
@@ -732,7 +800,9 @@ function animate() {
       visibleFaceNames = faces.slice(0, 3).map((f) => f.name);
 
       // Update grid colors and visibility
-      const worldUp = upVector.clone().applyQuaternion(gameContainer.quaternion);
+      const worldUp = upVector
+        .clone()
+        .applyQuaternion(gameContainer.quaternion);
       const worldRight = new THREE.Vector3()
         .crossVectors(direction, upVector)
         .applyQuaternion(gameContainer.quaternion);
@@ -779,7 +849,8 @@ function animate() {
       allParts.forEach((part) => {
         if (part && part.shadows) {
           for (const faceName in part.shadows) {
-            part.shadows[faceName].visible = visibleFaceNames.includes(faceName);
+            part.shadows[faceName].visible =
+              visibleFaceNames.includes(faceName);
           }
         }
       });
@@ -790,6 +861,29 @@ function animate() {
       });
     }
     frameCount++;
+
+    for (let i = particleSystems.length - 1; i >= 0; i--) {
+      const system = particleSystems[i];
+      system.lifetime -= delta;
+
+      if (system.lifetime <= 0) {
+        gameContainer.remove(system.mesh);
+        system.mesh.geometry.dispose();
+        system.mesh.material.dispose();
+        particleSystems.splice(i, 1);
+        continue;
+      }
+
+      system.mesh.material.opacity = system.lifetime;
+      const positions = system.mesh.geometry.attributes.position.array;
+      for (let j = 0; j < system.velocities.length; j++) {
+        system.velocities[j].y -= 5.0 * delta; // gravity
+        positions[j * 3] += system.velocities[j].x * delta;
+        positions[j * 3 + 1] += system.velocities[j].y * delta;
+        positions[j * 3 + 2] += system.velocities[j].z * delta;
+      }
+      system.mesh.geometry.attributes.position.needsUpdate = true;
+    }
   }
   renderer.render(scene, camera);
 }
