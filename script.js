@@ -144,7 +144,7 @@ let visibleFaceNames = [];
 let snake, direction, nextDirection, fruit, fruitPart, bombs, bombParts;
 let upVector, nextUpVector;
 let snakeHeadMesh, snakeTubeMeshes, snakeShadows, snakeTailMesh;
-let score, gameOver, gamePaused, gameInterval;
+let score, gameOver, gamePaused, gameInterval, frameCount = 0;
 
 // --- COLORS FROM CSS ---
 const style = getComputedStyle(document.documentElement);
@@ -170,40 +170,39 @@ function createShadowsForPos(pos, material) {
   shadowMaterial.transparent = true;
   shadowMaterial.opacity = 0.3;
 
-  const shadowPX = new THREE.Mesh(shadowGeometry, shadowMaterial);
-  shadowPX.position.set(HALF_GRID - 0.01, worldPos.y, worldPos.z);
-  shadowPX.rotation.y = -Math.PI / 2;
-  gameContainer.add(shadowPX);
-  shadows.px = shadowPX;
-
-  const shadowNX = new THREE.Mesh(shadowGeometry, shadowMaterial);
-  shadowNX.position.set(-HALF_GRID + 0.01, worldPos.y, worldPos.z);
-  shadowNX.rotation.y = Math.PI / 2;
-  gameContainer.add(shadowNX);
-  shadows.nx = shadowNX;
-
-  const shadowPY = new THREE.Mesh(shadowGeometry, shadowMaterial);
-  shadowPY.position.set(worldPos.x, HALF_GRID - 0.01, worldPos.z);
-  shadowPY.rotation.x = Math.PI / 2;
-  gameContainer.add(shadowPY);
-  shadows.py = shadowPY;
-
-  const shadowNY = new THREE.Mesh(shadowGeometry, shadowMaterial);
-  shadowNY.position.set(worldPos.x, -HALF_GRID + 0.01, worldPos.z);
-  shadowNY.rotation.x = -Math.PI / 2;
-  gameContainer.add(shadowNY);
-  shadows.ny = shadowNY;
-
-  const shadowPZ = new THREE.Mesh(shadowGeometry, shadowMaterial);
-  shadowPZ.position.set(worldPos.x, worldPos.y, HALF_GRID - 0.01);
-  shadowPZ.rotation.y = Math.PI;
-  gameContainer.add(shadowPZ);
-  shadows.pz = shadowPZ;
-
-  const shadowNZ = new THREE.Mesh(shadowGeometry, shadowMaterial);
-  shadowNZ.position.set(worldPos.x, worldPos.y, -HALF_GRID + 0.01);
-  gameContainer.add(shadowNZ);
-  shadows.nz = shadowNZ;
+  // Only create shadows for faces that have grids
+  faces.forEach(face => {
+    const shadowMesh = new THREE.Mesh(shadowGeometry, shadowMaterial);
+    switch (face.name) {
+      case "px":
+        shadowMesh.position.set(HALF_GRID - 0.01, worldPos.y, worldPos.z);
+        shadowMesh.rotation.y = -Math.PI / 2;
+        break;
+      case "nx":
+        shadowMesh.position.set(-HALF_GRID + 0.01, worldPos.y, worldPos.z);
+        shadowMesh.rotation.y = Math.PI / 2;
+        break;
+      case "py":
+        shadowMesh.position.set(worldPos.x, HALF_GRID - 0.01, worldPos.z);
+        shadowMesh.rotation.x = Math.PI / 2;
+        break;
+      case "ny":
+        shadowMesh.position.set(worldPos.x, -HALF_GRID + 0.01, worldPos.z);
+        shadowMesh.rotation.x = -Math.PI / 2;
+        break;
+      case "pz":
+        shadowMesh.position.set(worldPos.x, worldPos.y, HALF_GRID - 0.01);
+        shadowMesh.rotation.y = Math.PI;
+        break;
+      case "nz":
+        shadowMesh.position.set(worldPos.x, worldPos.y, -HALF_GRID + 0.01);
+        break;
+      default:
+        return; // Skip if face name is not recognized
+    }
+    gameContainer.add(shadowMesh);
+    shadows[face.name] = shadowMesh;
+  });
 
   return shadows;
 }
@@ -322,16 +321,49 @@ function updateSnakeMesh() {
 }
 
 function updateSnakeShadows() {
-  if (snakeShadows) {
-    snakeShadows.forEach((shadowGroup) =>
-      Object.values(shadowGroup).forEach((shadow) =>
-        gameContainer.remove(shadow),
-      ),
+  // Remove excess shadows if snake shrunk
+  while (snakeShadows.length > snake.length) {
+    const shadowGroup = snakeShadows.pop();
+    Object.values(shadowGroup).forEach((shadow) =>
+      gameContainer.remove(shadow),
     );
   }
-  snakeShadows = [];
-  snake.forEach((segmentPos) => {
-    snakeShadows.push(createShadowsForPos(segmentPos, snakeBodyMaterial));
+
+  // Update existing shadows or create new ones if snake grew
+  snake.forEach((segmentPos, index) => {
+    if (index < snakeShadows.length) {
+      // Update existing shadows
+      const shadowGroup = snakeShadows[index];
+      const worldPos = gridToWorld(segmentPos);
+      faces.forEach(face => {
+        const shadowMesh = shadowGroup[face.name];
+        if (shadowMesh) {
+          switch (face.name) {
+            case "px":
+              shadowMesh.position.set(HALF_GRID - 0.01, worldPos.y, worldPos.z);
+              break;
+            case "nx":
+              shadowMesh.position.set(-HALF_GRID + 0.01, worldPos.y, worldPos.z);
+              break;
+            case "py":
+              shadowMesh.position.set(worldPos.x, HALF_GRID - 0.01, worldPos.z);
+              break;
+            case "ny":
+              shadowMesh.position.set(worldPos.x, -HALF_GRID + 0.01, worldPos.z);
+              break;
+            case "pz":
+              shadowMesh.position.set(worldPos.x, worldPos.y, HALF_GRID - 0.01);
+              break;
+            case "nz":
+              shadowMesh.position.set(worldPos.x, worldPos.y, -HALF_GRID + 0.01);
+              break;
+          }
+        }
+      });
+    } else {
+      // Create new shadows if snake grew
+      snakeShadows.push(createShadowsForPos(segmentPos, snakeBodyMaterial));
+    }
   });
 }
 
@@ -371,6 +403,7 @@ function init() {
   score = 0;
   gameOver = false;
   gamePaused = true;
+  frameCount = 0;
 
   scoreElement.textContent = score;
   gameOverPanel.style.display = "none";
@@ -435,7 +468,7 @@ function startGame() {
   gameInterval = setInterval(update, GAME_SPEED);
 }
 
-function handleTurn(turnDirection) {
+function handleTurn(turnDirection, event = null) {
   if (gameOver) return;
 
   if (gamePaused) {
@@ -490,7 +523,7 @@ window.addEventListener("keydown", (event) => {
     default:
       return;
   }
-  handleTurn(turn);
+  handleTurn(turn, event);
 });
 
 window.addEventListener(
@@ -563,12 +596,98 @@ window.addEventListener(
 
     const finalTurn =
       touchY < screenHeight / 2 ? turnOptions.upper : turnOptions.lower;
-    handleTurn(finalTurn);
+    handleTurn(finalTurn, event);
   },
   { passive: false },
 );
 
-restartButton.addEventListener("click", startGame);
+window.addEventListener(
+  "mousedown",
+  (event) => {
+    event.preventDefault();
+    if (gameOver) return;
+
+    const touchX = event.clientX;
+    const touchY = event.clientY;
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+
+    const headPosWorld = gridToWorld(snake[0]).applyQuaternion(
+      gameContainer.quaternion,
+    );
+
+    let turnOptions = {};
+
+    if (touchX < screenWidth / 2) {
+      // Left (Magenta) side for up/down turns
+      const upDirWorld = upVector
+        .clone()
+        .applyQuaternion(gameContainer.quaternion);
+      const downDirWorld = upVector
+        .clone()
+        .negate()
+        .applyQuaternion(gameContainer.quaternion);
+
+      const upTurnPosProjected = headPosWorld
+        .clone()
+        .add(upDirWorld)
+        .project(camera);
+      const downTurnPosProjected = headPosWorld
+        .clone()
+        .add(downDirWorld)
+        .project(camera);
+
+      turnOptions = {
+        upper: upTurnPosProjected.y > downTurnPosProjected.y ? "up" : "down",
+        lower: upTurnPosProjected.y < downTurnPosProjected.y ? "up" : "down",
+      };
+    } else {
+      // Right (Yellow) side for left/right turns
+      const rightVector = direction.clone().cross(upVector);
+      const rightDirWorld = rightVector
+        .clone()
+        .applyQuaternion(gameContainer.quaternion);
+      const leftDirWorld = rightVector
+        .clone()
+        .negate()
+        .applyQuaternion(gameContainer.quaternion);
+
+      const rightTurnPosProjected = headPosWorld
+        .clone()
+        .add(rightDirWorld)
+        .project(camera);
+      const leftTurnPosProjected = headPosWorld
+        .clone()
+        .add(leftDirWorld)
+        .project(camera);
+
+      turnOptions = {
+        upper:
+          rightTurnPosProjected.y > leftTurnPosProjected.y ? "right" : "left",
+        lower:
+          rightTurnPosProjected.y < leftTurnPosProjected.y ? "right" : "left",
+      };
+    }
+
+    const finalTurn =
+      touchY < screenHeight / 2 ? turnOptions.upper : turnOptions.lower;
+    handleTurn(finalTurn, event);
+  },
+  { passive: false },
+);
+
+scoreElement.addEventListener("click", () => {
+  if (gameOver) return;
+
+  gamePaused = !gamePaused;
+  if (gamePaused) {
+    startMessagePanel.style.display = "flex";
+    controlElements.forEach((el) => (el.style.display = "block"));
+  } else {
+    startMessagePanel.style.display = "none";
+    controlElements.forEach((el) => (el.style.display = "none"));
+  }
+});
 
 function updateCameraForAspectRatio() {
   const aspect = window.innerWidth / window.innerHeight;
@@ -598,75 +717,79 @@ function animate() {
     gameContainer.rotation.y += 0.0005;
     gameContainer.rotation.x += 0.0002;
 
-    const cameraVec = new THREE.Vector3()
-      .subVectors(camera.position, gameContainer.position)
-      .normalize();
-    faces.forEach((face) => {
-      const worldNormal = face.normal
-        .clone()
-        .applyQuaternion(gameContainer.quaternion);
-      face.dot = worldNormal.dot(cameraVec);
-    });
-    faces.sort((a, b) => a.dot - b.dot);
-    visibleFaceNames = faces.slice(0, 3).map((f) => f.name);
-
-    // Update grid colors and visibility
-    const worldUp = upVector.clone().applyQuaternion(gameContainer.quaternion);
-    const worldRight = new THREE.Vector3()
-      .crossVectors(direction, upVector)
-      .applyQuaternion(gameContainer.quaternion);
-    const worldForward = direction
-      .clone()
-      .applyQuaternion(gameContainer.quaternion);
-
-    for (const face of faces) {
-      if (visibleFaceNames.includes(face.name)) {
-        face.grid.visible = true;
-
+    // Debounce expensive updates to visible faces, grid colors, and shadow visibility
+    if (frameCount % 10 === 0) {
+      const cameraVec = new THREE.Vector3()
+        .subVectors(camera.position, gameContainer.position)
+        .normalize();
+      faces.forEach((face) => {
         const worldNormal = face.normal
           .clone()
           .applyQuaternion(gameContainer.quaternion);
-        // SWAPPED LOGIC: Magenta is for up/down turns (aligned with upVector), Yellow is for left/right (aligned with rightVector)
-        const magentaFactor = Math.abs(worldNormal.dot(worldUp));
-        const yellowFactor = Math.abs(worldNormal.dot(worldRight));
-        const greyFactor = Math.abs(worldNormal.dot(worldForward));
+        face.dot = worldNormal.dot(cameraVec);
+      });
+      faces.sort((a, b) => a.dot - b.dot);
+      visibleFaceNames = faces.slice(0, 3).map((f) => f.name);
 
-        // If the face normal is most aligned with the forward/backward direction, make it a dull, transparent grey
-        if (greyFactor > magentaFactor && greyFactor > yellowFactor) {
-          face.grid.material.color.copy(greyColor);
-          face.grid.material.opacity = 0.15; // More transparent
-        } else {
-          // Otherwise, blend between magenta and yellow for the control-relevant planes
-          const totalFactor = magentaFactor + yellowFactor;
-          const yellowRatio =
-            totalFactor > 1e-6 ? yellowFactor / totalFactor : 0.5;
+      // Update grid colors and visibility
+      const worldUp = upVector.clone().applyQuaternion(gameContainer.quaternion);
+      const worldRight = new THREE.Vector3()
+        .crossVectors(direction, upVector)
+        .applyQuaternion(gameContainer.quaternion);
+      const worldForward = direction
+        .clone()
+        .applyQuaternion(gameContainer.quaternion);
 
-          const finalColor = magentaColor
+      for (const face of faces) {
+        if (visibleFaceNames.includes(face.name)) {
+          face.grid.visible = true;
+
+          const worldNormal = face.normal
             .clone()
-            .lerp(yellowColor, yellowRatio);
-          face.grid.material.color.copy(finalColor);
-          face.grid.material.opacity = 0.35; // Restore normal opacity
+            .applyQuaternion(gameContainer.quaternion);
+          // SWAPPED LOGIC: Magenta is for up/down turns (aligned with upVector), Yellow is for left/right (aligned with rightVector)
+          const magentaFactor = Math.abs(worldNormal.dot(worldUp));
+          const yellowFactor = Math.abs(worldNormal.dot(worldRight));
+          const greyFactor = Math.abs(worldNormal.dot(worldForward));
+
+          // If the face normal is most aligned with the forward/backward direction, make it a dull, transparent grey
+          if (greyFactor > magentaFactor && greyFactor > yellowFactor) {
+            face.grid.material.color.copy(greyColor);
+            face.grid.material.opacity = 0.15; // More transparent
+          } else {
+            // Otherwise, blend between magenta and yellow for the control-relevant planes
+            const totalFactor = magentaFactor + yellowFactor;
+            const yellowRatio =
+              totalFactor > 1e-6 ? yellowFactor / totalFactor : 0.5;
+
+            const finalColor = magentaColor
+              .clone()
+              .lerp(yellowColor, yellowRatio);
+            face.grid.material.color.copy(finalColor);
+            face.grid.material.opacity = 0.35; // Restore normal opacity
+          }
+        } else {
+          face.grid.visible = false;
         }
-      } else {
-        face.grid.visible = false;
       }
+
+      const allParts = [...bombParts];
+      if (fruitPart) allParts.push(fruitPart);
+
+      allParts.forEach((part) => {
+        if (part && part.shadows) {
+          for (const faceName in part.shadows) {
+            part.shadows[faceName].visible = visibleFaceNames.includes(faceName);
+          }
+        }
+      });
+      snakeShadows.forEach((shadowGroup) => {
+        for (const faceName in shadowGroup) {
+          shadowGroup[faceName].visible = visibleFaceNames.includes(faceName);
+        }
+      });
     }
-
-    const allParts = [...bombParts];
-    if (fruitPart) allParts.push(fruitPart);
-
-    allParts.forEach((part) => {
-      if (part && part.shadows) {
-        for (const faceName in part.shadows) {
-          part.shadows[faceName].visible = visibleFaceNames.includes(faceName);
-        }
-      }
-    });
-    snakeShadows.forEach((shadowGroup) => {
-      for (const faceName in shadowGroup) {
-        shadowGroup[faceName].visible = visibleFaceNames.includes(faceName);
-      }
-    });
+    frameCount++;
   }
   renderer.render(scene, camera);
 }
